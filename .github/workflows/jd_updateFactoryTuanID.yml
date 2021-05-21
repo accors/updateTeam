@@ -11,7 +11,6 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
-
     if: github.event.repository.owner.id == github.event.sender.id
     steps:
       - uses: actions/checkout@v2
@@ -27,3 +26,19 @@ jobs:
           node jd_jxFactoryCreateTuan.js
         env:
           JD_COOKIE: ${{ secrets.JD_COOKIE }}
+          JD_DEBUG: ${{ secrets.JD_DEBUG }}
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_USER_ID: ${{ secrets.TG_USER_ID }}
+
+      - name: commit
+        run: |
+          git config --global user.email ${{ secrets.EMAIL }}
+          git config --global user.name ${{ secrets.USER_NAME }}
+          git add .
+          git commit -m "update by Action" -a || echo "Nothing to update"
+      
+      - name: Push changes
+        uses: ad-m/github-push-action@master
+        with:
+          github_token: ${{ secrets.TOKEN }}
+          branch: main
