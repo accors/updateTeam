@@ -64,32 +64,34 @@ async function jdWish() {
   $.hasOpen = false;
   $.assistStatus = 0;
   await getUserTuanInfo()
-  if (!$.tuan) {
+  if (!$.tuan && ($.assistStatus === 3 || $.assistStatus === 2 || $.assistStatus === 0) && $.canStartNewAssist) {
+    console.log(`准备再次开团`)
     await openTuan()
     if ($.hasOpen) await getUserTuanInfo()
   }
-  if ($.tuan && $.assistStatus !== 3) $.tuanList.push($.tuan)
+  if ($.tuan && $.tuan.hasOwnProperty('assistedPinEncrypted') && $.assistStatus !== 3) $.tuanList.push($.tuan)
 
-  $.tuan = null
-  $.hasOpen = false
-  $.assistStatus = 0;
-  await getUserTuanInfo("NINE_BOX")
-  if (!$.tuan) {
-    await openTuan("NINE_BOX","lottery_drew")
-    if ($.hasOpen) await getUserTuanInfo("NINE_BOX")
-  }
-  if ($.tuan && $.assistStatus !== 3) $.tuanList.push($.tuan)
+  // $.tuan = null
+  // $.hasOpen = false
+  // $.assistStatus = 0;
+  // await getUserTuanInfo("NINE_BOX")
+  // if (!$.tuan && $.assistStatus === 3 && $.canStartNewAssist) {
+  //   await openTuan("NINE_BOX","lottery_drew")
+  //   if ($.hasOpen) await getUserTuanInfo("NINE_BOX")
+  // }
+  // if ($.tuan && $.tuan.hasOwnProperty('assistedPinEncrypted') && $.assistStatus !== 3) $.tuanList.push($.tuan)
 }
 async function writeFile() {
   if(!$.tuanList) return
   if (!fs.existsSync(`./shareCodes`)) fs.mkdirSync(`./shareCodes`);
   await fs.writeFileSync(`./shareCodes/jd_zz.json`, JSON.stringify($.tuanList));
-  // await fs.writeFileSync('jd_zz.json', JSON.stringify($.tuanList));
+  console.log(`\n${JSON.stringify($.tuanList)}\n`);
   console.log(`文件写入成功`);
 }
 
 function getUserTuanInfo(channel="FISSION_BEAN") {
   let body = {"paramData": {"channel": channel}}
+  console.log(`channel：${channel}`)
   return new Promise(resolve => {
     $.get(taskTuanUrl("distributeBeanActivityInfo", body), async (err, resp, data) => {
       try {
@@ -100,7 +102,14 @@ function getUserTuanInfo(channel="FISSION_BEAN") {
           if (safeGet(data)) {
             data = JSON.parse(data);
             if (data.success) {
-              $.log(`\n\n能否再次开团: ${data.data.canStartNewAssist ? '可以' : '否'}\n\n`)
+              $.log(`\n\n当前能否再次开团: ${data.data.canStartNewAssist ? '可以' : '否'}\n\n`)
+              if (data.data.assistStatus === 1 && !data.data.canStartNewAssist) {
+                console.log(`已开团(未达上限)，但团成员人未满`)
+              } else if (data.data.assistStatus === 3 && data.data.canStartNewAssist) {
+                console.log(`已开团(未达上限)，团成员人已满`)
+              } else if (data.data.assistStatus === 3 && !data.data.canStartNewAssist) {
+                console.log(`开团已达上限，团成员人已满`)
+              }
               if (!data.data.canStartNewAssist) {
                 //已开团(未达上限)且人未满 assistStatus=1,canStartNewAssist=false
                 //开团(未达上限)且人已满 assistStatus=3,canStartNewAssist=true
@@ -113,7 +122,12 @@ function getUserTuanInfo(channel="FISSION_BEAN") {
                 }
               }
               $.assistStatus = data['data']['assistStatus'];
+              $.canStartNewAssist = data['data']['canStartNewAssist'];
               $.tuanActId = data.data.id
+              console.log(`$.assistStatus：${$.assistStatus}`)
+            } else {
+              $.tuan = {};//活动太火爆了
+              console.log(`获取【赚京豆(微信小程序)-瓜分京豆】活动信息失败 ${channel} ${JSON.stringify(data)}`);
             }
           }
         }
@@ -139,6 +153,9 @@ function openTuan(channel="FISSION_BEAN") {
             data = JSON.parse(data);
             if (data['success']) {
               $.hasOpen = true
+              console.log(`【赚京豆(微信小程序)-瓜分京豆】开团成功`)
+            } else {
+              console.log(`开团失败：${JSON.stringify(data)}`)
             }
           }
         }
@@ -172,37 +189,38 @@ function taskTuanUrl(function_id, body = {},app="swat_miniprogram") {
 function TotalBean() {
   return new Promise(async resolve => {
     const options = {
-      "url": `https://wq.jd.com/user/info/QueryJDUserInfo?sceneval=2`,
-      "headers": {
-        "Accept": "application/json,text/plain, */*",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Accept-Encoding": "gzip, deflate, br",
+      url: "https://me-api.jd.com/user_new/info/GetJDUserInfoUnion",
+      headers: {
+        Host: "me-api.jd.com",
+        Accept: "*/*",
+        Connection: "keep-alive",
+        Cookie: cookie,
+        "User-Agent": "jdapp;iPhone;9.4.4;14.3;network/4g;Mozilla/5.0 (iPhone; CPU iPhone OS 14_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148;supportJDSHWK/1",
         "Accept-Language": "zh-cn",
-        "Connection": "keep-alive",
-        "Cookie": cookie,
-        "Referer": "https://wqs.jd.com/my/jingdou/my.shtml?sceneval=2",
-        "User-Agent": $.isNode() ? (process.env.JD_USER_AGENT ? process.env.JD_USER_AGENT : "jdapp;iPhone;9.2.2;14.2;%E4%BA%AC%E4%B8%9C/9.2.2 CFNetwork/1206 Darwin/20.1.0") : ($.getdata('JDUA') ? $.getdata('JDUA') : "jdapp;iPhone;9.2.2;14.2;%E4%BA%AC%E4%B8%9C/9.2.2 CFNetwork/1206 Darwin/20.1.0")
+        "Referer": "https://home.m.jd.com/myJd/newhome.action?sceneval=2&ufc=&",
+        "Accept-Encoding": "gzip, deflate, br"
       }
     }
-    $.post(options, (err, resp, data) => {
+    $.get(options, (err, resp, data) => {
       try {
         if (err) {
-          console.log(`${JSON.stringify(err)}`)
-          console.log(`${$.name} API请求失败，请检查网路重试`)
+          $.logErr(err)
         } else {
           if (data) {
             data = JSON.parse(data);
-            if (data['retcode'] === 13) {
+            if (data['retcode'] === "1001") {
               $.isLogin = false; //cookie过期
-              return
+              return;
             }
-            $.nickName = data['base'].nickname;
+            if (data['retcode'] === "0" && data.data && data.data.hasOwnProperty("userInfo")) {
+              $.nickName = data.data.userInfo.baseInfo.nickname;
+            }
           } else {
-            console.log(`京东服务器返回空数据`)
+            $.log('京东服务器返回空数据');
           }
         }
       } catch (e) {
-        $.logErr(e, resp)
+        $.logErr(e)
       } finally {
         resolve();
       }
