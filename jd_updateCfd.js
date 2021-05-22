@@ -38,6 +38,7 @@ if ($.isNode()) {
         continue
       }
       await getUserInfo();
+      await $.wait(2000)
       await submitGroupId()
     }
   }
@@ -53,26 +54,34 @@ async function writeFile() {
   }
   if (!fs.existsSync(`./shareCodes`)) fs.mkdirSync(`./shareCodes`);
   await fs.writeFileSync(`./shareCodes/cfd.json`, JSON.stringify(info));
-  console.log({
-    shareId : $.strMyShareIds,
-    strGroupIds : $.strGroupIds
-  })
+  console.log(`\n${JSON.stringify(info)}\n`)
   console.log(`文件写入成功`);
 }
 function getUserInfo() {
   return new Promise(async (resolve) => {
     $.get(taskUrl(`user/QueryUserInfo`), (err, resp, data) => {
       try {
-        const {
-          SceneList = {},
-          sErrMsg,
-          strMyShareId,
-        } = JSON.parse(data);
-        $.log(`\n获取用户信息：${sErrMsg}\n${$.showLog ? data : ""}`);
-        if (strMyShareId) $.strMyShareIds.push(strMyShareId)
-        for(let key of Object.keys(SceneList)){
-          let vo = SceneList[key]
-          console.log(`${vo.strSceneName}招工情况：${vo.dwEmployeeNum}/${vo.dwMaxEmployeeNum}`)
+        if (err) {
+          console.log(`${JSON.stringify(err)}`)
+          console.log(`${$.name} QueryUserInfo API请求失败，请检查网路重试`)
+        } else {
+          const {
+            SceneList = {},
+            sErrMsg,
+            strMyShareId,
+          } = JSON.parse(data);
+          $.log(`\n获取用户信息：${sErrMsg}\n${$.showLog ? data : ""}`);
+          // if (strMyShareId) $.strMyShareIds.push(strMyShareId)
+          $.canHelp = true;
+          for(let key of Object.keys(SceneList)){
+            let vo = SceneList[key]
+            console.log(`${vo.strSceneName}招工情况：${vo.dwEmployeeNum}/${vo.dwMaxEmployeeNum}`)
+            if (vo.dwEmployeeNum >= vo.dwMaxEmployeeNum) $.canHelp = false;
+          }
+          if ($.canHelp && strMyShareId) {
+            console.log(`邀请码：${strMyShareId}`);
+            $.strMyShareIds.push(strMyShareId)
+          }
         }
       } catch (e) {
         $.logErr(e, resp);
@@ -86,18 +95,30 @@ function submitGroupId() {
   return new Promise(resolve => {
     $.get(taskUrl(`user/GatherForture`), async (err, resp, g_data) => {
       try {
-        const { GroupInfo:{ strGroupId }, strPin } = JSON.parse(g_data);
-        if(!strGroupId) {
-          const status = await openGroup();
-          if(status === 0) {
-            await submitGroupId();
-          } else {
-            resolve();
-            return;
-          }
+        if (err) {
+          console.log(`${JSON.stringify(err)}`)
+          console.log(`${$.name} GatherForture API请求失败，请检查网路重试`)
         } else {
-          $.log('你的【🏝寻宝大作战】互助码: ' + strGroupId);
-          if (strGroupId) $.strGroupIds.push(strGroupId)
+          const { GroupInfo:{ strGroupId, dwStatus }, strPin, PeriodBox } = g_data = JSON.parse(g_data);
+          if(!strGroupId) {
+            const status = await openGroup();
+            if(status === 0) {
+              await submitGroupId();
+            } else {
+              resolve();
+              return;
+            }
+          } else {
+            if (dwStatus === 3) {
+              console.log(`已满全部助力\n`)
+            } else {
+              $.log(`\n${strPin} 你的【🏝寻宝大作战】互助码: ${strGroupId}`);
+              const s = PeriodBox.filter(vo => !!vo && vo['dwStatus'] === 3).length;
+              // const f = PeriodBox.filter(vo => !!vo && vo['dwStatus'] !== 3);
+              console.log(`出海寻宝开宝箱进度：${s}/${PeriodBox.length || 4}\n`);
+            }
+            if (strGroupId && dwStatus !== 3) $.strGroupIds.push(strGroupId)
+          }
         }
       } catch (e) {
         $.logErr(e, resp);
@@ -111,9 +132,14 @@ function openGroup() {
   return new Promise( async (resolve) => {
     $.get(taskUrl(`user/OpenGroup`, `dwIsNewUser=0`), async (err, resp, data) => {
       try {
-        const { sErrMsg } = JSON.parse(data);
-        $.log(`【🏝寻宝大作战】${sErrMsg}`);
-        resolve(0);
+        if (err) {
+          console.log(`${JSON.stringify(err)}`)
+          console.log(`${$.name} OpenGroup API请求失败，请检查网路重试`)
+        } else {
+          const { sErrMsg } = JSON.parse(data);
+          $.log(`【🏝寻宝大作战】${sErrMsg}`);
+          resolve(0);
+        }
       } catch (e) {
         $.logErr(e, resp);
       } finally {
@@ -141,39 +167,38 @@ function taskUrl(function_path, body) {
 function TotalBean() {
   return new Promise(async resolve => {
     const options = {
-      "url": `https://wq.jd.com/user/info/QueryJDUserInfo?sceneval=2`,
-      "headers": {
-        "Accept": "application/json,text/plain, */*",
-        "Content-Type": "application/x-www-form-urlencoded",
-        "Accept-Encoding": "gzip, deflate, br",
+      url: "https://me-api.jd.com/user_new/info/GetJDUserInfoUnion",
+      headers: {
+        Host: "me-api.jd.com",
+        Accept: "*/*",
+        Connection: "keep-alive",
+        Cookie: cookie,
+        "User-Agent": "jdapp;iPhone;9.4.4;14.3;network/4g;Mozilla/5.0 (iPhone; CPU iPhone OS 14_3 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148;supportJDSHWK/1",
         "Accept-Language": "zh-cn",
-        "Connection": "keep-alive",
-        "Cookie": cookie,
-        "Referer": "https://wqs.jd.com/my/jingdou/my.shtml?sceneval=2",
-        'User-Agent': $.isNode() ? (process.env.JD_USER_AGENT ? process.env.JD_USER_AGENT : "jdapp;iPhone;9.2.2;14.2;%E4%BA%AC%E4%B8%9C/9.2.2 CFNetwork/1206 Darwin/20.1.0") : ($.getdata('JDUA') ? $.getdata('JDUA') : "jdapp;iPhone;9.2.2;14.2;%E4%BA%AC%E4%B8%9C/9.2.2 CFNetwork/1206 Darwin/20.1.0"),
+        "Referer": "https://home.m.jd.com/myJd/newhome.action?sceneval=2&ufc=&",
+        "Accept-Encoding": "gzip, deflate, br"
       }
     }
-    $.post(options, (err, resp, data) => {
+    $.get(options, (err, resp, data) => {
       try {
         if (err) {
-          console.log(`${JSON.stringify(err)}`)
-          console.log(`${$.name} API请求失败，请检查网路重试`)
+          $.logErr(err)
         } else {
-          if (safeGet(data)) {
+          if (data) {
             data = JSON.parse(data);
-            if (data['retcode'] === 13) {
+            if (data['retcode'] === "1001") {
               $.isLogin = false; //cookie过期
-              return
+              return;
             }
-            if (data['retcode'] === 0) {
-              $.nickName = data['base'].nickname;
-            } else {
-              $.nickName = $.UserName
+            if (data['retcode'] === "0" && data.data && data.data.hasOwnProperty("userInfo")) {
+              $.nickName = data.data.userInfo.baseInfo.nickname;
             }
+          } else {
+            $.log('京东服务器返回空数据');
           }
         }
       } catch (e) {
-        $.logErr(e, resp)
+        $.logErr(e)
       } finally {
         resolve();
       }
