@@ -6,7 +6,7 @@ name: 「更新」京喜工厂
 on:
   workflow_dispatch:
   schedule:
-    - cron: '15,45 * * * *'
+    - cron: '0,30 * * * *'
   repository_dispatch:
     types: jd_updateFactoryTuanID
 jobs:
